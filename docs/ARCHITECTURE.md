@@ -28,6 +28,10 @@ sequenceDiagram
 Provides the low-latency synchronous contract expected by a payment authorization caller. A repeated
 transaction ID returns the stored prediction rather than producing duplicate records. OpenAPI,
 Pydantic validation, readiness, liveness, analytics, labels, and Prometheus are part of this boundary.
+The operations read model joins transactions, predictions, alerts, and confirmed labels for a
+filterable recent-transaction feed. A single investigation endpoint returns the stored feature
+snapshot, explanation, alert state, and earlier user activity so the dashboard does not reconstruct
+authorization-time state from future data.
 
 ### Redpanda and workers
 
@@ -42,6 +46,19 @@ PostgreSQL is the system of record and local history store. Normalized records c
 transactions, predictions, alerts, confirmed labels, outbox events, model versions, and drift reports.
 The `(user_id, timestamp)` index supports rolling history lookup. SQLite is available only as a test/
 developer fallback.
+
+Each prediction stores the exact point-in-time feature snapshot used for scoring. Analyst alert state
+supports `OPEN`, `IN_REVIEW`, and `RESOLVED`; resolving an alert and writing its confirmed fraud or
+legitimate label happen in the same database transaction and emit the existing confirmed-label outbox
+event. Historical predictions created before this schema change remain readable with a null snapshot
+rather than being inaccurately recomputed.
+
+### Fraud operations dashboard
+
+Streamlit consumes only public FastAPI contracts. Overview provides filters and a selectable
+transaction feed. Selecting a row opens the transaction, decision, top factors, behavior comparison,
+and prior-user timeline on the same page. Alert actions update case state through the API; cached
+dashboard reads are invalidated after successful writes so KPIs and case details remain consistent.
 
 ### Model lifecycle
 

@@ -97,6 +97,7 @@ class PredictionRecord(Base):
     model_version: Mapped[str] = mapped_column(String(128), nullable=False)
     processing_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
     rule_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    feature_snapshot: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -112,6 +113,9 @@ class FraudAlertRecord(Base):
     severity: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16), default="OPEN")
     explanation: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    analyst_note: Mapped[str | None] = mapped_column(Text)
+    resolution: Mapped[str | None] = mapped_column(String(16))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -272,9 +276,9 @@ def score_and_persist(
             country=transaction.country,
         )
     )
-    prediction = ScoringService(SQLHistoryProvider(session), model, decision_engine).score(
-        transaction
-    )
+    scoring_service = ScoringService(SQLHistoryProvider(session), model, decision_engine)
+    scoring = scoring_service.score_with_features(transaction)
+    prediction = scoring.prediction
     session.add(
         TransactionRecord(
             transaction_id=transaction.transaction_id,
@@ -302,6 +306,7 @@ def score_and_persist(
             model_version=prediction.model_version,
             processing_time_ms=prediction.processing_time_ms,
             rule_reasons=prediction.rule_reasons,
+            feature_snapshot=scoring.feature_snapshot,
         )
     )
     session.add(

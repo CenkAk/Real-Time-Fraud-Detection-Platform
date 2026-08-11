@@ -46,6 +46,8 @@ flowchart LR
 - Asynchronous SHAP explanations for alerts, a transparent reason-code fallback, delayed confirmed
   labels, PSI/KS/Jensen–Shannon drift checks, and champion/challenger promotion gates.
 - Streamlit fraud-operations dashboard plus Prometheus/Grafana system telemetry.
+- A filterable authorization feed and same-page investigation workspace with immutable point-in-time
+  feature snapshots, user history, reason codes/SHAP factors, and lightweight analyst case resolution.
 - Alembic migrations, structured JSON logs, Docker Compose, pytest, Ruff, mypy configuration, and a
   real Locust workload.
 
@@ -135,9 +137,16 @@ curl -X POST http://localhost:8000/transactions \
   }'
 ```
 
-Important endpoints include `/transactions/{id}`, `/predictions/{id}`,
-`/predictions/{id}/explanation`, `/alerts`, `/transactions/{id}/label`, `/model/info`,
-`/analytics/model-performance`, `/health/ready`, and `/metrics`.
+Important endpoints include the filterable `GET /transactions` feed,
+`/transactions/{id}/investigation`, `/transactions/{id}`, `/predictions/{id}`,
+`/predictions/{id}/explanation`, `/alerts`, `PATCH /alerts/{id}` analyst workflow,
+`/transactions/{id}/label`, `/model/info`, `/analytics/model-performance`, `/health/ready`, and
+`/metrics`.
+
+In the Streamlit Overview, select a transaction row to inspect its authorization-time behavior,
+model decision, triggered rules, explanation, and earlier user activity. Review/block alerts can be
+moved into review and resolved as fraud or legitimate; resolution atomically writes the delayed label
+used by performance monitoring.
 
 ## Testing and benchmarks
 
@@ -147,7 +156,7 @@ python -m pytest
 locust -f locustfile.py --host http://localhost:8000
 ```
 
-The current local suite passes 15 tests. No API load benchmark was run because Docker/PostgreSQL/
+The current local suite passes 19 tests. No API load benchmark was run because Docker/PostgreSQL/
 Redpanda were unavailable; latency and throughput remain **Not measured**. Never copy the target p95
 under 100 ms into a CV as if it were a result.
 

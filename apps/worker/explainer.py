@@ -10,6 +10,7 @@ from sqlalchemy import select
 from fraud_detection.config import get_settings
 from fraud_detection.database import (
     FraudAlertRecord,
+    PredictionRecord,
     SQLHistoryProvider,
     TransactionRecord,
     create_session_factory,
@@ -66,11 +67,15 @@ def run() -> None:
                 )
                 if transaction_row is None or alert is None:
                     raise LookupError(transaction_id)
-                transaction = transaction_from_record(transaction_row)
-                features = calculate_features(
-                    transaction,
-                    SQLHistoryProvider(session).prior_transactions(transaction, 30),
-                ).values
+                prediction_row = session.get(PredictionRecord, transaction_id)
+                if prediction_row is not None and prediction_row.feature_snapshot is not None:
+                    features = prediction_row.feature_snapshot
+                else:
+                    transaction = transaction_from_record(transaction_row)
+                    features = calculate_features(
+                        transaction,
+                        SQLHistoryProvider(session).prior_transactions(transaction, 30),
+                    ).values
                 factors = (
                     shap_explanation(artifact, features)
                     if artifact is not None and "background" in artifact

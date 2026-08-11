@@ -71,6 +71,7 @@ module = [
   "imblearn.*",
   "joblib.*",
   "mlflow.*",
+  "plotly.*",
   "pandas.*",
   "scipy.*",
   "shap.*",
