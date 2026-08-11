@@ -1,5 +1,3 @@
-"""Model loading and a transparent fallback scorer for bootstrap operation."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,8 +22,6 @@ class ProbabilityEstimator(Protocol):
 
 
 class HeuristicBootstrapModel:
-    """Explicit non-ML fallback used only until a trained model is available."""
-
     version = "bootstrap-heuristic"
     review_threshold = 0.40
     block_threshold = 0.70

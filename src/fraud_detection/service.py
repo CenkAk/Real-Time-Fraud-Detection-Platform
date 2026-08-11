@@ -1,5 +1,3 @@
-"""Shared synchronous scoring orchestration."""
-
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -11,8 +9,6 @@ from fraud_detection.model import ProbabilityModel
 
 @dataclass(frozen=True)
 class ScoringResult:
-    """Prediction plus the immutable point-in-time inputs that produced it."""
-
     prediction: Prediction
     feature_snapshot: dict[str, float]
 

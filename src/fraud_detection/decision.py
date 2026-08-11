@@ -1,5 +1,3 @@
-"""Business decision policy kept separate from model inference."""
-
 from dataclasses import dataclass
 
 from fraud_detection.domain import Decision

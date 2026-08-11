@@ -1,5 +1,3 @@
-"""Deterministic live transaction generator with explicit fraud scenarios."""
-
 from __future__ import annotations
 
 import random

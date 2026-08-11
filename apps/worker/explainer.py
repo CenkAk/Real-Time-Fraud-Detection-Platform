@@ -1,5 +1,3 @@
-"""Asynchronous SHAP worker for review and block alerts."""
-
 import logging
 import signal
 

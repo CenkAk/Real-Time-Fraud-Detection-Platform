@@ -1,5 +1,3 @@
-"""FastAPI entrypoint for scoring and operational queries."""
-
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -161,8 +159,6 @@ def list_transactions(
     min_amount: float | None = Query(default=None, ge=0),
     session: Session = Depends(database_session),
 ) -> dict[str, object]:
-    """Return a joined, filterable authorization feed for fraud operations."""
-
     if min_risk > max_risk:
         raise HTTPException(422, "min_risk cannot be greater than max_risk")
     since = datetime.now(UTC) - timedelta(hours=hours)
@@ -335,8 +331,6 @@ def update_alert(
     update: AlertUpdate,
     session: Session = Depends(database_session),
 ) -> dict[str, object]:
-    """Move an alert through review and atomically persist its final outcome."""
-
     alert = session.get(FraudAlertRecord, alert_id)
     if alert is None:
         raise HTTPException(404, "alert not found")

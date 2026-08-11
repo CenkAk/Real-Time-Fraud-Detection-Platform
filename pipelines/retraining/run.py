@@ -1,5 +1,3 @@
-"""Train a challenger and evaluate promotion gates without automatic deployment."""
-
 from __future__ import annotations
 
 import argparse

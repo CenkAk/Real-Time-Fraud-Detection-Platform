@@ -1,5 +1,3 @@
-"""Redpanda transaction consumer and outbox publisher."""
-
 import logging
 import signal
 import threading

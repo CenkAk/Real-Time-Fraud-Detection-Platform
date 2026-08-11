@@ -1,9 +1,3 @@
-"""Persist point-in-time features and lightweight analyst case state.
-
-Revision ID: 0002
-Revises: 0001
-"""
-
 from collections.abc import Sequence
 
 import sqlalchemy as sa

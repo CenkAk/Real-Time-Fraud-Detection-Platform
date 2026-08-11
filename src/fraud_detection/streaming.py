@@ -1,5 +1,3 @@
-"""Kafka-compatible serialization, producer, and transactional outbox publishing."""
-
 from __future__ import annotations
 
 import json
@@ -41,8 +39,6 @@ def publish_json(producer: Any, topic: str, key: str, payload: dict[str, object]
 def publish_outbox_batch(
     factory: sessionmaker[Session], producer: Any, batch_size: int = 100
 ) -> int:
-    """Publish committed outbox rows; duplicates remain safe via downstream idempotency."""
-
     session = factory()
     try:
         rows = list(

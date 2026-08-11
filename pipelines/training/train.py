@@ -1,5 +1,3 @@
-"""Chronological model comparison, calibration, and business threshold optimization."""
-
 from __future__ import annotations
 
 import argparse

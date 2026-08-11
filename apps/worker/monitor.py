@@ -1,5 +1,3 @@
-"""Scheduled data/prediction drift reports persisted for audit and retraining decisions."""
-
 import logging
 import time
 from datetime import UTC, datetime, timedelta

@@ -1,5 +1,3 @@
-"""Small, auditable drift metrics for numeric and categorical distributions."""
-
 from __future__ import annotations
 
 import numpy as np

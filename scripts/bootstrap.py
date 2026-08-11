@@ -1,5 +1,3 @@
-"""Idempotently prepare demo data and train the initial champion model."""
-
 from pathlib import Path
 
 from pipelines.training.data import (

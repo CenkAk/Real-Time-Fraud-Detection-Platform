@@ -1,5 +1,3 @@
-"""Structured logging and Prometheus metrics."""
-
 import logging
 import sys
 

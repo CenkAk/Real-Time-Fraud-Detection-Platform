@@ -1,5 +1,3 @@
-"""SQLAlchemy persistence model and transaction-safe scoring repository."""
-
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
@@ -262,8 +260,6 @@ def score_and_persist(
     model: ProbabilityModel,
     decision_engine: DecisionEngine,
 ) -> Prediction:
-    """Idempotently score and atomically persist domain records plus outbox events."""
-
     existing = session.get(PredictionRecord, transaction.transaction_id)
     if existing is not None:
         return prediction_from_record(existing)

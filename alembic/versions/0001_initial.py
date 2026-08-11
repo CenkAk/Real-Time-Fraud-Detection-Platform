@@ -1,8 +1,3 @@
-"""Initial normalized fraud platform schema.
-
-Revision ID: 0001
-"""
-
 from collections.abc import Sequence
 
 from alembic import op

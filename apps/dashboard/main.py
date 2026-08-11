@@ -1,5 +1,3 @@
-"""Fraud operations dashboard backed only by supported API contracts."""
-
 from __future__ import annotations
 
 import os

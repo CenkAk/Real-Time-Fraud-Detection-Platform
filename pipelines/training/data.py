@@ -1,5 +1,3 @@
-"""Download, validate, and enrich the public chronological transaction dataset."""
-
 from __future__ import annotations
 
 import argparse
@@ -20,8 +18,6 @@ CATEGORIES = ["grocery", "travel", "electronics", "fuel", "restaurant", "enterta
 
 
 def download_dataset(destination: Path, url: str = DATASET_URL) -> Path:
-    """Download the public source once and record the observed SHA-256 manifest."""
-
     destination.mkdir(parents=True, exist_ok=True)
     archive = destination / "fraud-handbook-main.zip"
     if not archive.exists():
@@ -73,14 +69,10 @@ def validate_source(frame: pd.DataFrame) -> None:
 
 
 def clean_source(frame: pd.DataFrame) -> pd.DataFrame:
-    """Remove zero-value simulator artifacts that violate the live API contract."""
-
     return frame.loc[frame["TX_AMOUNT"] > 0].copy()
 
 
 def enrich(frame: pd.DataFrame) -> pd.DataFrame:
-    """Deterministically add operational context; label-conditioned takeover is disclosed."""
-
     result = frame.rename(
         columns={
             "TRANSACTION_ID": "transaction_id",
@@ -113,8 +105,6 @@ def enrich(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def materialize_features(frame: pd.DataFrame) -> pd.DataFrame:
-    """Materialize past-only rolling features without including the current label or row."""
-
     frame = frame.sort_values("timestamp").copy()
     grouped = frame.groupby("user_id", sort=False)
     frame["user_average_amount"] = grouped["amount"].transform(

@@ -1,5 +1,3 @@
-"""Versioned domain contracts shared across HTTP and streaming boundaries."""
-
 from datetime import UTC, datetime
 from enum import StrEnum
 from ipaddress import IPv4Address
@@ -27,8 +25,6 @@ class AlertResolution(StrEnum):
 
 
 class Transaction(BaseModel):
-    """Canonical payment event; labels are deliberately absent."""
-
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str = "1.0"
@@ -86,8 +82,6 @@ class ConfirmedLabel(BaseModel):
 
 
 class AlertUpdate(BaseModel):
-    """A lightweight analyst case transition."""
-
     status: AlertStatus
     analyst_note: str | None = Field(default=None, max_length=2000)
     resolution: AlertResolution | None = None

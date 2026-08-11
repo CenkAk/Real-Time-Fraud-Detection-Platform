@@ -1,5 +1,3 @@
-"""Alert-only explanations with a graceful model-independent fallback."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -19,8 +17,6 @@ FRIENDLY_NAMES = {
 
 
 def reason_code_explanation(features: dict[str, float], limit: int = 5) -> list[RiskFactor]:
-    """Provide transparent factors when SHAP is unavailable or still pending."""
-
     weights = {
         "impossible_travel": features.get("impossible_travel", 0) * 2.0,
         "new_device": features.get("new_device", 0) * 0.8,
@@ -40,8 +36,6 @@ def reason_code_explanation(features: dict[str, float], limit: int = 5) -> list[
 def shap_explanation(
     artifact: dict[str, Any], features: dict[str, float], limit: int = 5
 ) -> list[RiskFactor]:
-    """Generate an alert-only SHAP explanation from the packaged background sample."""
-
     import shap
 
     columns = artifact["feature_columns"]

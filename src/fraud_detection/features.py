@@ -1,5 +1,3 @@
-"""Leakage-safe online feature computation from prior transaction history."""
-
 from __future__ import annotations
 
 import math
@@ -18,8 +16,6 @@ class HistoryProvider(Protocol):
 
 @dataclass(frozen=True)
 class FeatureVector:
-    """Named model inputs available at the exact time of authorization."""
-
     values: dict[str, float]
 
 
@@ -38,8 +34,6 @@ def calculate_features(
     *,
     impossible_travel_kmh: float = 900.0,
 ) -> FeatureVector:
-    """Calculate point-in-time features using only events older than the input event."""
-
     prior = sorted(
         (item for item in history if item.timestamp < transaction.timestamp),
         key=lambda item: item.timestamp,
@@ -104,8 +98,6 @@ def calculate_features(
 
 
 class InMemoryHistory:
-    """Deterministic history provider used by tests and the local fallback."""
-
     def __init__(self) -> None:
         self._transactions: list[Transaction] = []
 
