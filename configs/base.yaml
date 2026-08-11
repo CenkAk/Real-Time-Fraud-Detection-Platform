@@ -1,0 +1,17 @@
+features:
+  history_days: 30
+  impossible_travel_kmh: 900
+decision:
+  review_threshold: 0.40
+  block_threshold: 0.70
+  rules:
+    impossible_travel: review
+    transactions_last_5m: 8
+    amount_vs_user_average: 8.0
+costs:
+  missed_fraud_uses_amount: true
+  false_positive: 25.0
+  manual_review: 5.0
+  review_catch_rate: 0.80
+  maximum_review_rate: 0.05
+

@@ -211,97 +211,37 @@ def model_performance(session: Session = Depends(database_session)) -> dict[str,
         "labeled_transactions": len(rows),
         "precision": precision,
         "recall": recall,
-        "f1": 2 * prec…23938 tokens truncated… * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    return 2 * radius * math.asin(math.sqrt(a))
+        "f1": 2 * precision * recall / max(precision + recall, 1e-12),
+    }
 
 
-def calculate_features(
-    transaction: Transaction,
-    history: Sequence[Transaction],
-    *,
-    impossible_travel_kmh: float = 900.0,
-) -> FeatureVector:
-    """Calculate point-in-time features using only events older than the input event."""
-
-    prior = sorted(
-        (item for item in history if item.timestamp < transaction.timestamp),
-        key=lambda item: item.timestamp,
-    )
-    amounts = [item.amount for item in prior]
-    average = sum(amounts) / len(amounts) if amounts else transaction.amount
-    med = median(amounts) if amounts else transaction.amount
-
-    def recent(window: timedelta) -> list[Transaction]:
-        boundary = transaction.timestamp - window
-        return [item for item in prior if item.timestamp >= boundary]
-
-    last_1m = recent(timedelta(minutes=1))
-    last_5m = recent(timedelta(minutes=5))
-    last_1h = recent(timedelta(hours=1))
-    last_24h = recent(timedelta(hours=24))
-    known_merchants = {item.merchant_id for item in prior}
-    known_countries = {item.country for item in prior}
-    known_devices = {item.device_id for item in prior}
-
-    travel_speed = 0.0
-    impossible_travel = 0.0
-    if prior and transaction.latitude is not None and transaction.longitude is not None:
-        previous = prior[-1]
-        if previous.latitude is not None and previous.longitude is not None:
-            hours = (transaction.timestamp - previous.timestamp).total_seconds() / 3600
-            if hours > 0:
-                travel_speed = (
-                    _haversine_km(
-                        previous.latitude,
-                        previous.longitude,
-                        transaction.latitude,
-                        transaction.longitude,
-                    )
-                    / hours
-                )
-                impossible_travel = float(travel_speed > impossible_travel_kmh)
-
-    return FeatureVector(
-        {
-            "amount": transaction.amount,
-            "hour": float(transaction.timestamp.hour),
-            "weekday": float(transaction.timestamp.weekday()),
-            "user_average_amount": average,
-            "user_median_amount": med,
-            "amount_vs_user_average": transaction.amount / max(average, 0.01),
-            "transactions_last_1m": float(len(last_1m)),
-            "transactions_last_5m": float(len(last_5m)),
-            "transactions_last_1h": float(len(last_1h)),
-            "transactions_last_24h": float(len(last_24h)),
-            "amount_last_1h": sum(item.amount for item in last_1h),
-            "unique_merchants_last_24h": float(len({item.merchant_id for item in last_24h})),
-            "unique_countries_last_24h": float(len({item.country for item in last_24h})),
-            "new_merchant": float(bool(prior) and transaction.merchant_id not in known_merchants),
-            "new_country": float(bool(prior) and transaction.country not in known_countries),
-            "new_device": float(bool(prior) and transaction.device_id not in known_devices),
-            "ip_changed": float(bool(prior) and transaction.ip_address != prior[-1].ip_address),
-            "travel_speed_kmh": travel_speed,
-            "impossible_travel": impossible_travel,
-        }
-    )
+@app.get("/model/info")
+def model_info() -> dict[str, object]:
+    return {
+        "model_version": model.version,
+        "review_threshold": decision_engine.review_threshold,
+        "block_threshold": decision_engine.block_threshold,
+        "bootstrap_model": model.version == "bootstrap-heuristic",
+    }
 
 
-class InMemoryHistory:
-    """Deterministic history provider used by tests and the local fallback."""
+@app.get("/health/live")
+def liveness() -> dict[str, str]:
+    return {"status": "alive"}
 
-    def __init__(self) -> None:
-        self._transactions: list[Transaction] = []
 
-    def add(self, transaction: Transaction) -> None:
-        if all(item.transaction_id != transaction.transaction_id for item in self._transactions):
-            self._transactions.append(transaction)
+@app.get("/health/ready")
+def readiness(session: Session = Depends(database_session)) -> dict[str, str]:
+    session.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
-    def prior_transactions(self, transaction: Transaction, days: int = 30) -> list[Transaction]:
-        boundary = transaction.timestamp - timedelta(days=days)
-        return [
-            item
-            for item in self._transactions
-            if item.user_id == transaction.user_id
-            and boundary <= item.timestamp < transaction.timestamp
-            and item.transaction_id != transaction.transaction_id
-        ]
+
+@app.get("/health")
+def health(session: Session = Depends(database_session)) -> dict[str, object]:
+    session.execute(text("SELECT 1"))
+    return {"status": "healthy", "model_version": model.version}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
