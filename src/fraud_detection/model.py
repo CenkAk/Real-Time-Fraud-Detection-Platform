@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import joblib
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 
 class ProbabilityModel(Protocol):
@@ -16,6 +17,10 @@ class ProbabilityModel(Protocol):
     block_threshold: float
 
     def predict_probability(self, features: dict[str, float]) -> float: ...
+
+
+class ProbabilityEstimator(Protocol):
+    def predict_proba(self, features: pd.DataFrame) -> NDArray[np.float64]: ...
 
 
 class HeuristicBootstrapModel:
@@ -53,7 +58,8 @@ class SklearnModel:
     def predict_probability(self, features: dict[str, float]) -> float:
         columns = self.feature_columns or list(features)
         frame = pd.DataFrame([{name: features.get(name, 0.0) for name in columns}])
-        probability = self.artifact.predict_proba(frame)[0][1]  # type: ignore[attr-defined]
+        estimator = cast(ProbabilityEstimator, self.artifact)
+        probability = estimator.predict_proba(frame)[0][1]
         return float(probability)
 
 

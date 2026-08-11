@@ -321,7 +321,12 @@ def get_alerts(
     rows = session.scalars(
         select(FraudAlertRecord).order_by(FraudAlertRecord.created_at.desc()).limit(limit)
     )
-    return [_alert_payload(row) for row in rows]  # type: ignore[misc]
+    payloads: list[dict[str, object]] = []
+    for row in rows:
+        payload = _alert_payload(row)
+        if payload is not None:
+            payloads.append(payload)
+    return payloads
 
 
 @app.patch("/alerts/{alert_id}")

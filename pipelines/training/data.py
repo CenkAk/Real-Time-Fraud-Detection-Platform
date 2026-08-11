@@ -47,8 +47,6 @@ def load_public_data(archive: Path, maximum_rows: int | None = None) -> pd.DataF
         frames.append(frame)
     result = pd.concat(frames, ignore_index=True).sort_values("TX_DATETIME")
     if maximum_rows is not None and len(result) > maximum_rows:
-        # Preserve the full time range; taking the first N rows captures only the
-        # handbook's initial amount-based fraud scenario and produces a toy result.
         positions = np.linspace(0, len(result) - 1, maximum_rows, dtype=int)
         return result.iloc[positions].copy()
     return result

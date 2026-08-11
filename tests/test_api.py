@@ -1,13 +1,17 @@
 import math
 import os
 from datetime import UTC, datetime, timedelta
+from importlib import import_module
 
 from fastapi.testclient import TestClient
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
-from apps.api.main import SessionFactory, app  # noqa: E402
-from fraud_detection.database import PredictionRecord  # noqa: E402
+api_module = import_module("apps.api.main")
+database_module = import_module("fraud_detection.database")
+SessionFactory = api_module.SessionFactory
+app = api_module.app
+PredictionRecord = database_module.PredictionRecord
 
 
 def payload(identifier: str) -> dict[str, object]:
