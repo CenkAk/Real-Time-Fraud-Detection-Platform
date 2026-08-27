@@ -12,6 +12,7 @@ database_module = import_module("fraud_detection.database")
 SessionFactory = api_module.SessionFactory
 app = api_module.app
 PredictionRecord = database_module.PredictionRecord
+database_module.Base.metadata.create_all(api_module.engine)
 
 
 def payload(identifier: str) -> dict[str, object]:
@@ -176,3 +177,49 @@ def test_historical_prediction_without_snapshot_has_safe_fallback() -> None:
     assert detail.json()["feature_snapshot"] is None
     assert detail.json()["feature_snapshot_status"] == "unavailable"
     assert detail.json()["explanation"]["top_risk_factors"] == []
+
+
+def test_analytics_contracts_and_request_correlation() -> None:
+    earlier, suspicious = suspicious_pair("txn-analytics-contract")
+    with TestClient(app) as client:
+        client.post("/transactions", json=earlier)
+        scored = client.post("/transactions", json=suspicious)
+        assert scored.json()["decision"] == "BLOCK"
+        alerts = client.get("/alerts?limit=1000").json()
+        alert = next(row for row in alerts if row["transaction_id"] == "txn-analytics-contract")
+        client.patch(
+            f"/alerts/{alert['alert_id']}",
+            json={"status": "RESOLVED", "resolution": "FRAUD"},
+        )
+
+        overview = client.get(
+            "/analytics/overview", headers={"x-request-id": "analytics-contract-request"}
+        )
+        trends = client.get("/analytics/fraud-trends?dimension=country&hours=24")
+        performance = client.get("/analytics/model-performance")
+        drift = client.get("/analytics/drift-reports?limit=10&offset=0")
+        metrics = client.get("/metrics")
+
+    assert overview.status_code == 200
+    assert overview.headers["x-request-id"] == "analytics-contract-request"
+    assert overview.json()["confirmed_fraud_24h"] >= 1
+    assert overview.json()["confirmed_fraud_blocked_amount_24h"] >= 2500
+    assert any(row["key"] == "JP" for row in trends.json())
+    assert performance.json()["status"] == "available"
+    assert performance.json()["labeled_transactions"] >= 1
+    assert drift.json()["items"] == []
+    assert drift.json()["limit"] == 10
+    assert "fraud_http_requests_total" in metrics.text
+
+
+def test_manual_retraining_request_only_queues_a_job() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/retraining-jobs",
+            json={"requested_by": "phase5-test", "reason": "manual verification"},
+        )
+        jobs = client.get("/admin/retraining-jobs")
+    assert response.status_code == 202
+    assert response.json()["status"] == "QUEUED"
+    assert response.json()["promotion_recommended"] is None
+    assert any(row["job_id"] == response.json()["job_id"] for row in jobs.json())

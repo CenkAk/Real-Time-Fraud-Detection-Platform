@@ -93,3 +93,12 @@ class AlertUpdate(BaseModel):
         if self.status != AlertStatus.RESOLVED and self.resolution is not None:
             raise ValueError("resolution is only valid when status is RESOLVED")
         return self
+
+
+class ManualRetrainingRequest(BaseModel):
+    requested_by: str = Field(default="admin", min_length=1, max_length=128)
+    reason: str = Field(default="manual", min_length=1, max_length=500)
+
+
+class PromotionRequest(BaseModel):
+    requested_by: str = Field(min_length=1, max_length=128)

@@ -152,6 +152,7 @@ class DriftReportRecord(Base):
     window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     metrics: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     drift_detected: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    segment: Mapped[str] = mapped_column(String(128), nullable=False, default="all")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
@@ -167,6 +168,53 @@ class ModelVersionRecord(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PerformanceReportRecord(Base):
+    __tablename__ = "performance_reports"
+    report_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    label_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    degradation_detected: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
+class RetrainingJobRecord(Base):
+    __tablename__ = "retraining_jobs"
+    job_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="QUEUED")
+    trigger_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    champion_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    challenger_version: Mapped[str | None] = mapped_column(String(128))
+    promotion_recommended: Mapped[bool | None] = mapped_column(Boolean)
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class ModelPromotionRecord(Base):
+    __tablename__ = "model_promotions"
+    promotion_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("retraining_jobs.job_id"), nullable=False, unique=True
+    )
+    previous_champion: Mapped[str] = mapped_column(String(128), nullable=False)
+    promoted_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    promoted_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    gate_results: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    promoted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 def create_session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -319,6 +367,11 @@ def score_and_persist(
             payload=prediction.model_dump(mode="json"),
         )
     )
+    # FraudAlertRecord has a database FK but no ORM relationship to the
+    # transaction mapper. Flush the parent graph first so PostgreSQL never
+    # attempts the alert INSERT ahead of its transaction. This remains inside
+    # the caller's transaction and therefore preserves outbox atomicity.
+    session.flush()
     if prediction.decision != Decision.APPROVE:
         alert = FraudAlertRecord(
             transaction_id=transaction.transaction_id,

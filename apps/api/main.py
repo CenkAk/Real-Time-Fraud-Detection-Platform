@@ -1,18 +1,23 @@
-from collections.abc import AsyncIterator, Iterator
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from fraud_detection.config import get_settings
 from fraud_detection.database import (
-    Base,
     ConfirmedLabelRecord,
     FraudAlertRecord,
+    PerformanceReportRecord,
     PredictionRecord,
+    RetrainingJobRecord,
     TransactionRecord,
     create_session_factory,
     prediction_from_record,
@@ -27,12 +32,25 @@ from fraud_detection.domain import (
     AlertUpdate,
     ConfirmedLabel,
     Decision,
+    ManualRetrainingRequest,
     Prediction,
+    PromotionRequest,
     Transaction,
 )
 from fraud_detection.explainability import reason_code_explanation
+from fraud_detection.lifecycle import queue_retraining_job
 from fraud_detection.model import load_model
-from fraud_detection.observability import INFERENCE_LATENCY, TRANSACTIONS, configure_logging
+from fraud_detection.observability import (
+    ERRORS,
+    HTTP_REQUEST_LATENCY,
+    HTTP_REQUESTS,
+    INFERENCE_LATENCY,
+    REQUEST_ID,
+    TRANSACTIONS,
+    configure_logging,
+)
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 engine, SessionFactory = create_session_factory(settings.database_url)
@@ -50,7 +68,6 @@ decision_engine = DecisionEngine(
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
-    Base.metadata.create_all(engine)
     yield
 
 
@@ -60,6 +77,44 @@ app = FastAPI(
     description="Synchronous risk scoring backed by event-driven processing.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def observe_request(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    request_id = request.headers.get("x-request-id") or str(uuid4())
+    token = REQUEST_ID.set(request_id)
+    started = perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        response.headers["x-request-id"] = request_id
+        return response
+    except Exception as exc:
+        ERRORS.labels("api", type(exc).__name__).inc()
+        logger.exception(
+            "request_error",
+            extra={"method": request.method, "path": request.url.path},
+        )
+        raise
+    finally:
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", request.url.path)
+        elapsed = perf_counter() - started
+        HTTP_REQUESTS.labels(request.method, route_path, str(status)).inc()
+        HTTP_REQUEST_LATENCY.labels(request.method, route_path).observe(elapsed)
+        logger.info(
+            "request_completed",
+            extra={
+                "method": request.method,
+                "route": route_path,
+                "status": status,
+                "duration_ms": elapsed * 1000,
+            },
+        )
+        REQUEST_ID.reset(token)
 
 
 def database_session() -> Iterator[Session]:
@@ -135,11 +190,35 @@ def _transaction_summary(
 def create_transaction(
     transaction: Transaction, session: Session = Depends(database_session)
 ) -> Prediction:
+    logger.info(
+        "transaction_received",
+        extra={
+            "transaction_id": transaction.transaction_id,
+            "request_id": str(transaction.request_id),
+        },
+    )
     try:
         with INFERENCE_LATENCY.time():
             prediction = score_and_persist(session, transaction, model, decision_engine)
             session.commit()
         TRANSACTIONS.labels(prediction.decision.value).inc()
+        logger.info(
+            "prediction_completed",
+            extra={
+                "transaction_id": prediction.transaction_id,
+                "decision": prediction.decision.value,
+                "model_version": prediction.model_version,
+                "processing_time_ms": prediction.processing_time_ms,
+            },
+        )
+        if prediction.decision != Decision.APPROVE:
+            logger.info(
+                "alert_created",
+                extra={
+                    "transaction_id": prediction.transaction_id,
+                    "decision": prediction.decision.value,
+                },
+            )
         return prediction
     except Exception:
         session.rollback()
@@ -405,10 +484,188 @@ def analytics_overview(session: Session = Depends(database_session)) -> dict[str
         .where(TransactionRecord.timestamp >= since)
         .group_by(PredictionRecord.decision)
     ).all()
+    confirmed_fraud = session.scalar(
+        select(func.count())
+        .select_from(ConfirmedLabelRecord)
+        .join(TransactionRecord)
+        .where(ConfirmedLabelRecord.is_fraud.is_(True), TransactionRecord.timestamp >= since)
+    ) or 0
+    confirmed_blocked_amount = session.scalar(
+        select(func.coalesce(func.sum(TransactionRecord.amount), 0.0))
+        .select_from(ConfirmedLabelRecord)
+        .join(TransactionRecord)
+        .join(PredictionRecord)
+        .where(
+            ConfirmedLabelRecord.is_fraud.is_(True),
+            PredictionRecord.decision == Decision.BLOCK.value,
+            TransactionRecord.timestamp >= since,
+        )
+    ) or 0.0
     return {
         "transactions_24h": total,
         "decisions": {name: count for name, count in grouped},
+        "confirmed_fraud_24h": confirmed_fraud,
+        "confirmed_fraud_blocked_amount_24h": float(confirmed_blocked_amount),
         "as_of": datetime.now(UTC),
+    }
+
+
+@app.get("/analytics/fraud-trends")
+def fraud_trends(
+    dimension: str = Query(default="hour", pattern="^(hour|country|merchant_category)$"),
+    hours: int = Query(default=24, ge=1, le=24 * 365),
+    session: Session = Depends(database_session),
+) -> list[dict[str, object]]:
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    rows = session.execute(
+        select(TransactionRecord, PredictionRecord)
+        .join(PredictionRecord)
+        .where(TransactionRecord.timestamp >= since)
+    ).all()
+    buckets: dict[str, dict[str, float]] = {}
+    for transaction, prediction in rows:
+        timestamp = _as_utc(transaction.timestamp) or transaction.timestamp
+        key = (
+            timestamp.strftime("%Y-%m-%d %H:00")
+            if dimension == "hour"
+            else str(getattr(transaction, dimension))
+        )
+        bucket = buckets.setdefault(
+            key, {"transactions": 0.0, "review": 0.0, "blocked": 0.0, "amount": 0.0}
+        )
+        bucket["transactions"] += 1
+        bucket["amount"] += transaction.amount
+        bucket["review"] += float(prediction.decision == Decision.MANUAL_REVIEW.value)
+        bucket["blocked"] += float(prediction.decision == Decision.BLOCK.value)
+    return [{"key": key, **values} for key, values in sorted(buckets.items())]
+
+
+@app.get("/analytics/drift-reports")
+def drift_reports(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(database_session),
+) -> dict[str, object]:
+    from fraud_detection.database import DriftReportRecord
+
+    total = session.scalar(select(func.count()).select_from(DriftReportRecord)) or 0
+    rows = session.scalars(
+        select(DriftReportRecord)
+        .order_by(DriftReportRecord.window_end.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return {
+        "items": [
+            {
+                "report_id": row.report_id,
+                "model_version": row.model_version,
+                "window_start": _as_utc(row.window_start),
+                "window_end": _as_utc(row.window_end),
+                "metrics": row.metrics,
+                "drift_detected": row.drift_detected,
+                "segment": row.segment,
+                "created_at": _as_utc(row.created_at),
+            }
+            for row in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get("/analytics/performance-reports")
+def performance_reports(
+    limit: int = Query(default=50, ge=1, le=500),
+    session: Session = Depends(database_session),
+) -> list[dict[str, object]]:
+    rows = session.scalars(
+        select(PerformanceReportRecord)
+        .order_by(PerformanceReportRecord.window_end.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "report_id": row.report_id,
+            "model_version": row.model_version,
+            "window_start": _as_utc(row.window_start),
+            "window_end": _as_utc(row.window_end),
+            "label_count": row.label_count,
+            "metrics": row.metrics,
+            "degradation_detected": row.degradation_detected,
+        }
+        for row in rows
+    ]
+
+
+def _job_payload(row: RetrainingJobRecord) -> dict[str, object]:
+    return {
+        "job_id": row.job_id,
+        "trigger_type": row.trigger_type,
+        "status": row.status,
+        "trigger_metadata": row.trigger_metadata,
+        "champion_version": row.champion_version,
+        "challenger_version": row.challenger_version,
+        "promotion_recommended": row.promotion_recommended,
+        "requested_by": row.requested_by,
+        "created_at": _as_utc(row.created_at),
+        "started_at": _as_utc(row.started_at),
+        "completed_at": _as_utc(row.completed_at),
+        "error": row.error,
+    }
+
+
+@app.get("/admin/retraining-jobs")
+def retraining_jobs(session: Session = Depends(database_session)) -> list[dict[str, object]]:
+    rows = session.scalars(
+        select(RetrainingJobRecord).order_by(RetrainingJobRecord.created_at.desc()).limit(100)
+    )
+    return [_job_payload(row) for row in rows]
+
+
+@app.post("/admin/retraining-jobs", status_code=202)
+def request_retraining(
+    request: ManualRetrainingRequest,
+    session: Session = Depends(database_session),
+) -> dict[str, object]:
+    job = queue_retraining_job(
+        session,
+        trigger_type="MANUAL",
+        champion_version=model.version,
+        metadata={"reason": request.reason},
+        requested_by=request.requested_by,
+    )
+    session.commit()
+    return _job_payload(job)
+
+
+@app.post("/admin/retraining-jobs/{job_id}/promote")
+def promote_retraining_job(
+    job_id: str,
+    request: PromotionRequest,
+    session: Session = Depends(database_session),
+) -> dict[str, object]:
+    from pipelines.retraining.promotion import promote_completed_job
+
+    job = session.get(RetrainingJobRecord, job_id)
+    if job is None:
+        raise HTTPException(404, "retraining job not found")
+    try:
+        promotion = promote_completed_job(
+            session,
+            job,
+            tracking_uri=settings.mlflow_tracking_uri,
+            requested_by=request.requested_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {
+        "promotion_id": promotion.promotion_id,
+        "previous_champion": promotion.previous_champion,
+        "promoted_version": promotion.promoted_version,
+        "promoted_by": promotion.promoted_by,
+        "promoted_at": _as_utc(promotion.promoted_at),
     }
 
 
@@ -448,12 +705,19 @@ def model_performance(session: Session = Depends(database_session)) -> dict[str,
     )
     precision = true_positive / max(true_positive + false_positive, 1)
     recall = true_positive / max(true_positive + false_negative, 1)
+    probabilities = [float(row.fraud_probability) for row in rows]
+    pr_auc = average_precision_score(labels, probabilities)
+    roc_auc = roc_auc_score(labels, probabilities) if len(set(labels)) > 1 else None
     return {
         "status": "available",
         "labeled_transactions": len(rows),
         "precision": precision,
         "recall": recall,
         "f1": 2 * precision * recall / max(precision + recall, 1e-12),
+        "pr_auc": float(pr_auc),
+        "roc_auc": float(roc_auc) if roc_auc is not None else None,
+        "brier_score": float(brier_score_loss(labels, probabilities)),
+        "minimum_retraining_labels": 200,
     }
 
 

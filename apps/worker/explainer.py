@@ -54,7 +54,12 @@ def run() -> None:
             message = consumer.poll(1)
             if message is None or message.error():
                 continue
-            transaction_id = message.key().decode()
+            raw_key = message.key()
+            if raw_key is None:
+                logger.error("explanation_message_missing_key")
+                consumer.commit(message=message, asynchronous=False)
+                continue
+            transaction_id = raw_key.decode()
             session = factory()
             try:
                 transaction_row = session.get(TransactionRecord, transaction_id)

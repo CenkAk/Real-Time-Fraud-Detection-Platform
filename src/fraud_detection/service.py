@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -5,6 +6,8 @@ from fraud_detection.decision import DecisionEngine
 from fraud_detection.domain import Prediction, Transaction
 from fraud_detection.features import HistoryProvider, calculate_features
 from fraud_detection.model import ProbabilityModel
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,15 @@ class ScoringService:
         started = perf_counter()
         history = self.history.prior_transactions(transaction, days=30)
         features = calculate_features(transaction, history).values
+        logger.info(
+            "features_generated",
+            extra={
+                "transaction_id": transaction.transaction_id,
+                "request_id": str(transaction.request_id),
+                "feature_count": len(features),
+                "history_count": len(history),
+            },
+        )
         probability = self.model.predict_probability(features)
         decision = self.decision_engine.decide(probability, features)
         return ScoringResult(

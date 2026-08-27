@@ -1,7 +1,21 @@
+import os
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from locust import HttpUser, between, task
+import gevent
+from locust import HttpUser, between, events, task
+
+
+@events.test_start.add_listener
+def reset_after_warmup(environment: object, **_: object) -> None:
+    warmup_seconds = int(os.getenv("BENCHMARK_WARMUP_SECONDS", "120"))
+
+    def reset() -> None:
+        runner = getattr(environment, "runner", None)
+        if runner is not None:
+            runner.stats.reset_all()
+
+    gevent.spawn_later(warmup_seconds, reset)
 
 
 class FraudApiUser(HttpUser):
