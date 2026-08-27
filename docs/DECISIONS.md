@@ -28,7 +28,7 @@ would model back-office screening better but not authorization.
 ## ADR-005: Compare interpretable and boosted models
 
 Logistic Regression establishes an interpretable baseline; Random Forest tests bagged nonlinear trees;
-XGBoost tests boosted interactions. The measured demo chose XGBoost by configured expected cost, not by
+XGBoost tests boosted interactions. The measured demo chose Random Forest by configured expected cost, not by
 brand preference. The architecture continues to support a different future champion.
 
 ## ADR-006: Separate probability from decision
@@ -46,4 +46,3 @@ statistically better but operationally unsafe model.
 
 SHAP on every approval would spend latency where explanations are rarely consumed. REVIEW/BLOCK alerts
 are explained asynchronously, leaving authorization latency independent of explanation cost.
-

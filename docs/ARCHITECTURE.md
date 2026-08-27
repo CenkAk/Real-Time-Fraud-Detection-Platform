@@ -55,7 +55,8 @@ rather than being inaccurately recomputed.
 
 ### Fraud operations dashboard
 
-Streamlit consumes only public FastAPI contracts. Overview provides filters and a selectable
+The Next.js/TypeScript Fraud Command Center consumes only public FastAPI contracts through BFF route
+handlers. Overview provides filters and a selectable
 transaction feed. Selecting a row opens the transaction, decision, top factors, behavior comparison,
 and prior-user timeline on the same page. Alert actions update case state through the API; cached
 dashboard reads are invalidated after successful writes so KPIs and case details remain consistent.

@@ -24,7 +24,7 @@ flowchart LR
     P --> O
     O -->|predictions / alerts| K
     K --> X[SHAP worker]
-    P --> UI[Streamlit dashboard]
+    P --> UI[Next.js Fraud Command Center]
     A --> PR[Prometheus]
     W --> PR
     PR --> G[Grafana]
@@ -39,13 +39,16 @@ flowchart LR
   manual offset commits and a transactional outbox prevent database/event divergence.
 - Point-in-time amount, behavioral, velocity, novelty, IP, and geographic features. Every online
   history query excludes the current and future events.
-- Logistic Regression, Random Forest, XGBoost, random undersampling, and SMOTE comparison with
-  chronological splits, calibration, business-cost thresholding, MLflow tracking, and registry entry.
+- Logistic Regression, random undersampling, and SMOTE baselines plus Optuna-tuned Random Forest and
+  XGBoost with chronological splits, calibration, business-cost thresholding, nested MLflow runs,
+  lineage metadata, and guarded champion/challenger aliases.
 - Separate risk score and decision policy with configurable review/block thresholds and escalation
   rules for bursts, anomalous amounts, new devices, and impossible travel.
 - Asynchronous SHAP explanations for alerts, a transparent reason-code fallback, delayed confirmed
   labels, PSI/KS/Jensen–Shannon drift checks, and champion/challenger promotion gates.
-- Streamlit fraud-operations dashboard plus Prometheus/Grafana system telemetry.
+- Two-window segment drift and 200-label delayed-performance triggers create idempotent retraining
+  jobs; passing challengers still require explicit, audited manual promotion.
+- Next.js/TypeScript Fraud Command Center plus Prometheus/Grafana system telemetry.
 - A filterable authorization feed and same-page investigation workspace with immutable point-in-time
   feature snapshots, user history, reason codes/SHAP factors, and lightweight analyst case resolution.
 - Alembic migrations, structured JSON logs, Docker Compose, pytest, Ruff, mypy configuration, and a
@@ -53,21 +56,21 @@ flowchart LR
 
 ## Measured demo model results
 
-These values come from `artifacts/model_report.json`, generated locally on 2026-08-11. The demo used a
+These values come from `artifacts/challenger_model_report.json`, generated locally on 2026-08-26 UTC. The demo used a
 deterministic 249,992-row sample distributed across the full Fraud Detection Handbook timeline. The
 latest 15% was untouched until final evaluation.
 
 | Metric | Held-out result |
 |---|---:|
-| Champion | XGBoost |
-| Precision | 0.9000 |
-| Recall | 0.2769 |
-| F1 | 0.4235 |
-| PR-AUC | 0.3139 |
-| ROC-AUC | 0.6471 |
-| False-positive rate | 0.000269 |
-| False-negative rate | 0.7231 |
-| Review / block thresholds | 0.10 / 0.30 |
+| Selected challenger | Random Forest |
+| Precision | 0.9266 |
+| Recall | 0.3108 |
+| F1 | 0.4654 |
+| PR-AUC | 0.3363 |
+| ROC-AUC | 0.6677 |
+| False-positive rate | 0.000215 |
+| False-negative rate | 0.6892 |
+| Review / block thresholds | 0.15 / 0.40 |
 
 Accuracy is intentionally not a selection metric: a model predicting “legitimate” for nearly every
 payment can have excellent accuracy and still miss the fraud class. The champion was selected by
@@ -89,8 +92,8 @@ target, and future aggregates are never model inputs. See [MODELING.md](docs/MOD
 
 ### Docker Compose
 
-Docker Desktop is required but was not available in the implementation environment, so the Compose
-topology is implemented but not locally executed here.
+Docker Desktop is required. The Compose topology has been verified locally, including first-run data
+preparation, model training and registration, application migrations, and service health checks.
 
 ```bash
 cp .env.example .env
@@ -99,12 +102,14 @@ docker compose up --build
 
 The first start downloads the public data, creates a distributed demo sample, trains/registers the
 model, applies migrations, and starts the services. Cached named volumes make later starts faster.
+MLflow keeps its metadata database beside its registry artifacts in the persistent
+`model_artifacts` volume, isolating its internal migrations from the application's PostgreSQL schema.
 
 | Service | URL |
 |---|---|
 | API | http://localhost:8000 |
 | Swagger | http://localhost:8000/docs |
-| Streamlit | http://localhost:8501 |
+| Fraud Command Center | http://localhost:8501 |
 | MLflow | http://localhost:5000 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
@@ -143,27 +148,29 @@ Important endpoints include the filterable `GET /transactions` feed,
 `/transactions/{id}/label`, `/model/info`, `/analytics/model-performance`, `/health/ready`, and
 `/metrics`.
 
-In the Streamlit Overview, select a transaction row to inspect its authorization-time behavior,
+In the Fraud Command Center, select a transaction row to inspect its authorization-time behavior,
 model decision, triggered rules, explanation, and earlier user activity. Review/block alerts can be
 moved into review and resolved as fraud or legitimate; resolution atomically writes the delayed label
 used by performance monitoring.
 
 ## Testing and benchmarks
 
-```bash
-python -m ruff check .
-python -m pytest
-locust -f locustfile.py --host http://localhost:8000
+```powershell
+./scripts/verify.ps1 -Integration -Frontend
 ```
 
-The current local suite passes 19 tests. No API load benchmark was run because Docker/PostgreSQL/
-Redpanda were unavailable; latency and throughput remain **Not measured**. Never copy the target p95
-under 100 ms into a CV as if it were a result.
+The 2026-08-27 Phase 6 core acceptance run passed 33 backend unit/contract tests, 2 real-infrastructure
+Testcontainers tests (PostgreSQL and Redpanda), and 2 Playwright analyst-flow tests. Ruff, strict mypy,
+ESLint, TypeScript, both production image builds, and a clean-volume Compose bootstrap also passed.
+The complete 10/50/100-user and streaming benchmark matrix has not yet been published; latency and
+throughput therefore remain **Not measured**. Never copy the target p95 under 100 ms into a CV as if it
+were a result. The V1 release gate therefore remains conditional on that matrix. See
+[BENCHMARKS.md](BENCHMARKS.md) and [V1 release checklist](docs/V1_RELEASE_CHECKLIST.md).
 
 ## Repository map
 
 ```text
-apps/                 API, worker, simulator, Streamlit dashboard
+apps/                 API, workers, simulator, Next.js dashboard
 src/fraud_detection/ Shared domain, feature, model, decision, DB, streaming, monitoring code
 pipelines/            Data preparation, training, evaluation, retraining
 alembic/              Database migrations
@@ -178,6 +185,8 @@ docs/                 Architecture, modeling, ADRs, interview and portfolio mate
 - [Architecture](docs/ARCHITECTURE.md)
 - [Modeling and leakage](docs/MODELING.md)
 - [Decision log](docs/DECISIONS.md)
+- [V1 release checklist](docs/V1_RELEASE_CHECKLIST.md)
+- [Phase 6 acceptance evidence](docs/PHASE6_ACCEPTANCE.md)
 
 ## Limitations and future improvements
 

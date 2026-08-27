@@ -1,7 +1,7 @@
 name: fraud-detection-platform
 
 x-app: &app
-  build: .
+  image: fraud-detection-platform-app:latest
   env_file: .env
   environment:
     DATABASE_URL: postgresql+psycopg://fraud:fraud@postgres:5432/fraud
@@ -56,17 +56,32 @@ services:
       retries: 20
     restart: unless-stopped
 
+  volume-init:
+    image: fraud-detection-platform-app:latest
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /app/artifacts/mlflow /app/artifacts/models /app/data/raw /app/data/processed &&
+        chown -R 10001:10001 /app/artifacts /app/data
+    volumes:
+      - model_artifacts:/app/artifacts
+      - platform_data:/app/data
+    restart: "no"
+
   mlflow:
     <<: *app
+    build: .
     command: >-
       mlflow server --host 0.0.0.0 --port 5000
-      --backend-store-uri postgresql+psycopg://fraud:fraud@postgres:5432/fraud
+      --backend-store-uri sqlite:////app/artifacts/mlflow/mlflow.db
       --default-artifact-root /app/artifacts/mlflow
     ports:
       - "5000:5000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
@@ -124,6 +139,13 @@ services:
       api:
         condition: service_healthy
 
+  retraining-worker:
+    <<: *app
+    command: ["python", "-m", "pipelines.retraining.worker"]
+    depends_on:
+      api:
+        condition: service_healthy
+
   simulator:
     <<: *app
     command: ["python", "-m", "apps.simulator.main"]
@@ -132,18 +154,22 @@ services:
         condition: service_started
 
   dashboard:
-    <<: *app
-    command: ["streamlit", "run", "apps/dashboard/main.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
     environment:
-      API_URL: http://api:8000
-      DATABASE_URL: postgresql+psycopg://fraud:fraud@postgres:5432/fraud
-      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      MODEL_PATH: /app/artifacts/models/champion.joblib
+      API_INTERNAL_URL: http://api:8000
     ports:
-      - "8501:8501"
+      - "8501:3000"
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.55.1

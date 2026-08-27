@@ -2,13 +2,66 @@
   "title": "Fraud Platform Operations",
   "uid": "fraud-platform",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "time": {"from": "now-1h", "to": "now"},
   "panels": [
-    {"type":"timeseries","title":"Transaction decisions","id":1,"gridPos":{"h":8,"w":12,"x":0,"y":0},"targets":[{"expr":"sum by (decision) (rate(fraud_transactions_total[1m]))","legendFormat":"{{decision}}"}]},
-    {"type":"timeseries","title":"P95 inference latency","id":2,"gridPos":{"h":8,"w":12,"x":12,"y":0},"targets":[{"expr":"histogram_quantile(0.95, sum by (le) (rate(fraud_inference_latency_seconds_bucket[5m])))","legendFormat":"p95"}]},
-    {"type":"timeseries","title":"Errors","id":3,"gridPos":{"h":8,"w":24,"x":0,"y":8},"targets":[{"expr":"sum by (component,error_type) (rate(fraud_errors_total[5m]))","legendFormat":"{{component}} {{error_type}}"}]}
+    {
+      "type": "timeseries", "title": "API request latency", "id": 1,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(fraud_http_request_latency_seconds_bucket[5m])))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(fraud_http_request_latency_seconds_bucket[5m])))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(fraud_http_request_latency_seconds_bucket[5m])))", "legendFormat": "p99"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "type": "timeseries", "title": "API throughput", "id": 2,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "sum by (route) (rate(fraud_http_requests_total[1m]))", "legendFormat": "{{route}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}}
+    },
+    {
+      "type": "timeseries", "title": "Event latency", "id": 3,
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(fraud_event_latency_seconds_bucket[5m])))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(fraud_event_latency_seconds_bucket[5m])))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(fraud_event_latency_seconds_bucket[5m])))", "legendFormat": "p99"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "type": "timeseries", "title": "Consumer lag", "id": 4,
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "targets": [{"expr": "sum by (group, topic) (fraud_consumer_lag)", "legendFormat": "{{group}} · {{topic}}"}]
+    },
+    {
+      "type": "timeseries", "title": "Outbox backlog", "id": 5,
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "targets": [
+        {"expr": "fraud_outbox_pending", "legendFormat": "pending"},
+        {"expr": "fraud_outbox_oldest_age_seconds", "legendFormat": "oldest age (s)"}
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Transaction decisions", "id": 6,
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "targets": [{"expr": "sum by (decision) (rate(fraud_transactions_total[1m]))", "legendFormat": "{{decision}}"}]
+    },
+    {
+      "type": "timeseries", "title": "Worker throughput", "id": 7,
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "targets": [{"expr": "sum by (result) (rate(fraud_worker_events_total[1m]))", "legendFormat": "{{result}}"}]
+    },
+    {
+      "type": "timeseries", "title": "Errors and DLQ", "id": 8,
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+      "targets": [
+        {"expr": "sum by (component, error_type) (rate(fraud_errors_total[5m]))", "legendFormat": "{{component}} · {{error_type}}"},
+        {"expr": "rate(fraud_dlq_events_total[5m])", "legendFormat": "DLQ"}
+      ]
+    }
   ]
 }
-
