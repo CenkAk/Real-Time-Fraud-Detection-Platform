@@ -18,6 +18,8 @@ mlruns/
 *.log
 *.db
 .DS_Store
+*.md
+!/README.md
 apps/web/.next/
 apps/web/node_modules/
 apps/web/test-results/

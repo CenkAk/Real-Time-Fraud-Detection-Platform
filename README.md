@@ -86,7 +86,8 @@ download script records the observed archive SHA-256.
 Deterministic enrichment adds operational fields needed by the live event contract. Country/device
 takeover context is label-conditioned synthetic behavior and is therefore **excluded from model
 features**; it is used only to exercise explicit online rules and dashboards. `TX_FRAUD_SCENARIO`, the
-target, and future aggregates are never model inputs. See [MODELING.md](docs/MODELING.md).
+target, and future aggregates are never model inputs; shared feature contracts and leakage tests enforce
+these exclusions.
 
 ## Run locally
 
@@ -164,8 +165,7 @@ Testcontainers tests (PostgreSQL and Redpanda), and 2 Playwright analyst-flow te
 ESLint, TypeScript, both production image builds, and a clean-volume Compose bootstrap also passed.
 The complete 10/50/100-user and streaming benchmark matrix has not yet been published; latency and
 throughput therefore remain **Not measured**. Never copy the target p95 under 100 ms into a CV as if it
-were a result. The V1 release gate therefore remains conditional on that matrix. See
-[BENCHMARKS.md](BENCHMARKS.md) and [V1 release checklist](docs/V1_RELEASE_CHECKLIST.md).
+were a result. The V1 release gate therefore remains conditional on publishing that matrix.
 
 ## Repository map
 
@@ -179,14 +179,6 @@ docker/               Prometheus and Grafana provisioning
 tests/                Unit, API, ML, drift, and lifecycle tests
 docs/                 Architecture, modeling, ADRs, interview and portfolio material
 ```
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Modeling and leakage](docs/MODELING.md)
-- [Decision log](docs/DECISIONS.md)
-- [V1 release checklist](docs/V1_RELEASE_CHECKLIST.md)
-- [Phase 6 acceptance evidence](docs/PHASE6_ACCEPTANCE.md)
 
 ## Limitations and future improvements
 
