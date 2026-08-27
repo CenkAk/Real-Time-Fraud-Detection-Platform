@@ -2,7 +2,7 @@
 
 A production-style portfolio system that turns payment events into calibrated fraud probabilities,
 business decisions, alerts, delayed-label metrics, drift reports, and operational dashboards. This is
-an engineered application—not a notebook classifier—and deliberately separates model risk from the
+an engineered application, not a notebook classifier, and deliberately separates model risk from the
 policy that approves, reviews, or blocks a payment.
 
 ## Why this project exists
