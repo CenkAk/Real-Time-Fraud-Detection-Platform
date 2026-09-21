@@ -31,6 +31,31 @@ flowchart LR
     T[Training pipeline] --> ML[MLflow registry]
 ```
 
+## Fraud Command Center
+
+The analyst-facing Next.js interface connects scoring, investigation, and model monitoring in one operational workflow.
+
+### Operational overview
+
+<img src="https://cenkakcadogan.com/images/projects/fraud/01-overview.png" alt="Fraud Command Center overview showing fraud KPIs, transaction activity, and risk monitoring." width="100%" />
+
+<p align="center"><sub><strong>Command center overview.</strong> Live fraud KPIs, transaction activity, policy decisions, and risk monitoring in one workspace.</sub></p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="https://cenkakcadogan.com/images/projects/fraud/02-alerts.png" alt="Fraud Command Center alert and analyst review workflow." width="100%" />
+      <br />
+      <sub><strong>Alert and review workflow.</strong> Analyst-facing investigation flow for reviewing high-risk transactions and operational decisions.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="https://cenkakcadogan.com/images/projects/fraud/03-model.png" alt="Fraud Command Center model monitoring interface." width="100%" />
+      <br />
+      <sub><strong>Model monitoring.</strong> Performance, thresholds, and active model state exposed alongside the operational system.</sub>
+    </td>
+  </tr>
+</table>
+
 ## Implemented capabilities
 
 - FastAPI scoring with strict Pydantic contracts, OpenAPI docs, health checks, idempotent transaction
